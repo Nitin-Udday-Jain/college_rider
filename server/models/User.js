@@ -18,6 +18,12 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ['student', 'driver'], // The role must be one of these two options
     required: true
+  },
+  vehicleModel: {
+    type: String, // e.g., 'Honda City' (only for drivers)
+  },
+  vehiclePlate: {
+    type: String, // e.g., 'KA-01-XX-1234' (only for drivers)
   }
 }, { timestamps: true }); // Automatically adds 'createdAt' and 'updatedAt' fields
 

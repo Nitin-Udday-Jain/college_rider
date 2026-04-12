@@ -6,6 +6,8 @@ import { Box, Typography, Button, Card, CardContent, CardActions, Container } fr
 function DriverDashboard() {
   const [rideRequests, setRideRequests] = useState([]);
   const [ongoingRide, setOngoingRide] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const watchIdRef = useRef(null);
   const [user, setUser] = useState(null);
   const socketRef = useRef(null);
@@ -17,6 +19,18 @@ function DriverDashboard() {
       setUser(JSON.parse(loggedInUser));
     }
   }, []);
+
+  const fetchHistory = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch(`http://localhost:5000/api/bookings/history/${user._id}`);
+      const data = await response.json();
+      setHistory(data);
+      setShowHistory(true);
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    }
+  };
 
   // Socket connection logic
   useEffect(() => {
@@ -44,6 +58,19 @@ function DriverDashboard() {
       socket.on('newRideRequest', (booking) => {
         console.log('New ride request received:', booking);
         setRideRequests((prevRequests) => [booking, ...prevRequests]);
+      });
+
+      socket.on('rideCancelled', (data) => {
+        if (data.source === 'student') {
+           setRideRequests((prevRequests) => prevRequests.filter(r => r._id !== data.bookingId));
+           setOngoingRide((prev) => {
+             if (prev && prev._id === data.bookingId) {
+               alert("The student has cancelled the active ride.");
+               return null;
+             }
+             return prev;
+           });
+        }
       });
 
       socket.on('disconnect', () => {
@@ -141,10 +168,15 @@ function DriverDashboard() {
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Driver Dashboard
-        </Typography>
-        <Typography variant="h6">Welcome, {user.name}!</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" component="h1">
+            Driver Dashboard
+          </Typography>
+          <Button variant="outlined" onClick={() => showHistory ? setShowHistory(false) : fetchHistory()}>
+            {showHistory ? 'Hide History' : 'Ride History'}
+          </Button>
+        </Box>
+        <Typography variant="h6" gutterBottom>Welcome, {user.name}!</Typography>
 
         {/* --- Current Ride Section --- */}
         {ongoingRide && (
@@ -152,15 +184,25 @@ function DriverDashboard() {
             <Typography variant="h5" gutterBottom>Current Ride</Typography>
             <Card variant="outlined" sx={{ borderColor: 'primary.main', borderWidth: 2 }}>
               <CardContent>
-                <Typography><strong>From:</strong> {ongoingRide.pickupLocation.name}</Typography>
-                <Typography><strong>To:</strong> {ongoingRide.destinationLocation.name}</Typography>
+                <Typography><strong>From:</strong> {ongoingRide.pickupLocation?.name}</Typography>
+                <Typography><strong>To:</strong> {ongoingRide.destinationLocation?.name}</Typography>
+                <Typography><strong>Distance:</strong> {ongoingRide.distance} km</Typography>
+                <Typography><strong>Estimated Fare:</strong> ₹{ongoingRide.estimatedFare}</Typography>
                 <Typography><strong>Status:</strong> {ongoingRide.status}</Typography>
               </CardContent>
               <CardActions>
                 {ongoingRide.status === 'accepted' && (
-                  <Button variant="contained" color="success" onClick={handlePickup}>
-                    Mark as Picked Up
-                  </Button>
+                  <>
+                    <Button variant="contained" color="success" onClick={handlePickup}>
+                      Mark as Picked Up
+                    </Button>
+                    <Button variant="outlined" color="error" onClick={() => {
+                       socketRef.current.emit('cancelRide', { bookingId: ongoingRide._id, role: 'driver' });
+                       setOngoingRide(null);
+                    }} sx={{ ml: 2 }}>
+                      Cancel Ride
+                    </Button>
+                  </>
                 )}
                 {ongoingRide.status === 'ongoing' && (
                   <Button variant="contained" color="primary" onClick={handleComplete}>
@@ -169,6 +211,29 @@ function DriverDashboard() {
                 )}
               </CardActions>
             </Card>
+          </Box>
+        )}
+
+        {/* --- Ride History Section --- */}
+        {showHistory && (
+          <Box sx={{ mt: 4, p: 2, bgcolor: '#f9f9f9', borderRadius: 1 }}>
+            <Typography variant="h5" gutterBottom>Ride History</Typography>
+            {history.length === 0 ? (
+              <Typography>No past rides found.</Typography>
+            ) : (
+              history.map((ride) => (
+                <Card key={ride._id} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography><strong>Date:</strong> {new Date(ride.createdAt).toLocaleString()}</Typography>
+                    <Typography><strong>From:</strong> {ride.pickupLocation?.name}</Typography>
+                    <Typography><strong>To:</strong> {ride.destinationLocation?.name}</Typography>
+                    <Typography><strong>Status:</strong> {ride.status}</Typography>
+                    {ride.distance && <Typography><strong>Distance:</strong> {ride.distance} km</Typography>}
+                    {ride.estimatedFare && <Typography><strong>Fare:</strong> ₹{ride.estimatedFare}</Typography>}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </Box>
         )}
 
@@ -182,8 +247,10 @@ function DriverDashboard() {
               rideRequests.map((ride) => (
                 <Card key={ride._id} variant="outlined" sx={{ mb: 2 }}>
                   <CardContent>
-                    <Typography><strong>From:</strong> {ride.pickupLocation.name}</Typography>
-                    <Typography><strong>To:</strong> {ride.destinationLocation.name}</Typography>
+                    <Typography><strong>From:</strong> {ride.pickupLocation?.name}</Typography>
+                    <Typography><strong>To:</strong> {ride.destinationLocation?.name}</Typography>
+                    {ride.distance && <Typography><strong>Distance:</strong> {ride.distance} km</Typography>}
+                    {ride.estimatedFare && <Typography><strong>Estimated Fare:</strong> ₹{ride.estimatedFare}</Typography>}
                   </CardContent>
                   <CardActions>
                     <Button variant="contained" onClick={() => handleAcceptRide(ride)}>

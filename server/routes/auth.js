@@ -21,6 +21,8 @@ router.post('/register', async (req, res) => {
       email: req.body.email,
       password: hashedPassword,
       role: req.body.role,
+      vehicleModel: req.body.role === 'driver' ? req.body.vehicleModel : undefined,
+      vehiclePlate: req.body.role === 'driver' ? req.body.vehiclePlate : undefined,
     });
 
     // Save the user to the database

@@ -49,8 +49,41 @@ const io = new Server(server, {
 app.use((req, res, next) => {
   req.io = io;
   req.availableDrivers = availableDrivers;
+  
+  req.startDispatchWaterfall = (booking) => {
+    console.log(`Starting dispatch waterfall for booking: ${booking._id}`);
+    const pickupLocation = booking.pickupLocation;
+    const sortedDrivers = availableDrivers
+      .filter(driver => driver.location) 
+      .sort((a, b) => {
+        const distA = getDistance(pickupLocation, a.location);
+        const distB = getDistance(pickupLocation, b.location);
+        return distA - distB;
+      });
+    
+    dispatchToNextDriver(booking, sortedDrivers);
+  };
+  
   next();
 });
+
+  function dispatchToNextDriver(booking, drivers) {
+    if (drivers.length === 0) {
+      console.log(`No more drivers for booking ${booking._id}`);
+      return;
+    }
+    const driver = drivers.shift(); // Get closest driver
+    console.log(`Offering ride ${booking._id} to driver ${driver.driverId}`);
+    // Send offer
+    io.to(driver.socketId).emit('newRideRequest', booking);
+    // Set 30s timeout
+    const rideTimeout = setTimeout(() => {
+      console.log(`Driver ${driver.driverId} timed out for booking ${booking._id}`);
+      dispatchToNextDriver(booking, drivers); // Try next driver
+    }, 30000); 
+    rideTimeouts[booking._id] = rideTimeout;
+  }
+
 
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
@@ -75,45 +108,7 @@ io.on('connection', (socket) => {
     console.log('Available drivers:', availableDrivers);
   });
 
-  // --- 3. NEW: Start Dispatch (Waterfall Logic) ---
-  socket.on('startDispatch', (booking) => {
-    console.log(`Starting dispatch for booking: ${booking._id}`);
-    
-    // 1. Sort drivers by distance
-    const pickupLocation = booking.pickupLocation;
-    const sortedDrivers = availableDrivers
-      .filter(driver => driver.location) 
-      .sort((a, b) => {
-        const distA = getDistance(pickupLocation, a.location);
-        const distB = getDistance(pickupLocation, b.location);
-        return distA - distB;
-      });
-    
-    // 2. Start the recursive dispatch
-    dispatchToNextDriver(booking, sortedDrivers);
-  });
-  
-  // --- 4. NEW: Recursive Function ---
-  function dispatchToNextDriver(booking, drivers) {
-    if (drivers.length === 0) {
-      console.log(`No more drivers for booking ${booking._id}`);
-      return;
-    }
-
-    const driver = drivers.shift(); // Get closest driver
-    console.log(`Offering ride ${booking._id} to driver ${driver.driverId}`);
-    
-    // Send offer
-    io.to(driver.socketId).emit('newRideRequest', booking);
-
-    // Set 30s timeout
-    const rideTimeout = setTimeout(() => {
-      console.log(`Driver ${driver.driverId} timed out for booking ${booking._id}`);
-      dispatchToNextDriver(booking, drivers); // Try next driver
-    }, 30000); 
-
-    rideTimeouts[booking._id] = rideTimeout;
-  }
+  // Waterfall logic moved to req.startDispatchWaterfall in the main app.use middleware
   // ------------------------------------
 
   // --- 5. UPDATED: Clear Timeout on Accept ---
@@ -132,7 +127,7 @@ io.on('connection', (socket) => {
         data.bookingId,
         { status: 'accepted', driver: data.driverId },
         { new: true }
-      );
+      ).populate('driver', '-password');
 
       const studentId = updatedBooking.student.toString();
       const studentSocketId = allSockets[studentId];
@@ -169,6 +164,39 @@ io.on('connection', (socket) => {
       const studentId = updatedBooking.student.toString();
       if (allSockets[studentId]) io.to(allSockets[studentId]).emit('rideStatusUpdate', updatedBooking);
     } catch (err) { console.error("Error updating status to completed:", err); }
+  });
+
+  // Listener for Cancellation
+  socket.on('cancelRide', async (data) => {
+    try {
+      console.log(`Cancel request received for booking: ${data.bookingId} by ${data.role}`);
+      
+      // Clear timeout
+      if (rideTimeouts[data.bookingId]) {
+        clearTimeout(rideTimeouts[data.bookingId]);
+        delete rideTimeouts[data.bookingId];
+        console.log(`Timeout cleared for cancelled booking ${data.bookingId}`);
+      }
+
+      // Update status in MongoDB
+      const updatedBooking = await Booking.findByIdAndUpdate(
+        data.bookingId, { status: 'cancelled' }, { new: true }
+      );
+      
+      if (!updatedBooking) return;
+
+      // Notify parties
+      if (data.role === 'student') {
+        // Let everyone know so drivers can remove it from new requests or current ride UI
+        io.emit('rideCancelled', { bookingId: data.bookingId, source: 'student' }); 
+      } else if (data.role === 'driver') {
+        // Let the specific student know the driver backed out
+        const studentId = updatedBooking.student.toString();
+        if (allSockets[studentId]) {
+          io.to(allSockets[studentId]).emit('rideCancelled', { bookingId: data.bookingId, source: 'driver' });
+        }
+      }
+    } catch (err) { console.error("Error cancelling ride:", err); }
   });
 
   // Driver Location Update

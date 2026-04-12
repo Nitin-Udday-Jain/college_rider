@@ -21,6 +21,12 @@ const BookingSchema = new mongoose.Schema({
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
   },
+  distance: {
+    type: Number, // Distance in km
+  },
+  estimatedFare: {
+    type: Number, // Estimated fare in INR
+  },
   status: {
         type: String,
         enum: ['requested', 'accepted', 'ongoing', 'completed', 'cancelled'], // <-- Make sure all 5 are here

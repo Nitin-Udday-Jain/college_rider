@@ -20,6 +20,8 @@ function Register() {
     email: '',
     password: '',
     role: 'student', // Default role
+    vehicleModel: '',
+    vehiclePlate: '',
   });
   const navigate = useNavigate();
 
@@ -104,6 +106,32 @@ function Register() {
               <MenuItem value="driver">Driver</MenuItem>
             </Select>
           </FormControl>
+          
+          {formData.role === 'driver' && (
+            <>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                name="vehicleModel"
+                label="Vehicle Model (e.g., Honda City)"
+                id="vehicleModel"
+                value={formData.vehicleModel}
+                onChange={handleChange}
+              />
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                name="vehiclePlate"
+                label="License Plate (e.g., KA-01-XX-1234)"
+                id="vehiclePlate"
+                value={formData.vehiclePlate}
+                onChange={handleChange}
+              />
+            </>
+          )}
+
           <Button
             type="submit"
             fullWidth
