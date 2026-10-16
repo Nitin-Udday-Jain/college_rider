@@ -5,8 +5,12 @@ const bcrypt = require('bcryptjs');
 // REGISTER a new user
 router.post('/register', async (req, res) => {
   try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (req.body.role === 'student' && !email.endsWith('@iitdh.ac.in')) {
+      return res.status(400).json({ message: 'Students must register with an @iitdh.ac.in email address.' });
+    }
     // Check if user already exists
-    const userExists = await User.findOne({ email: req.body.email });
+    const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json("An account with this email already exists.");
     }
@@ -18,7 +22,7 @@ router.post('/register', async (req, res) => {
     // Create a new user object
     const newUser = new User({
       name: req.body.name,
-      email: req.body.email,
+      email,
       password: hashedPassword,
       role: req.body.role,
       vehicleModel: req.body.role === 'driver' ? req.body.vehicleModel : undefined,
@@ -41,7 +45,8 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     // 1. Check if the user exists
-    const user = await User.findOne({ email: req.body.email });
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json("Invalid credentials"); // Keep error generic
     }

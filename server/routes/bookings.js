@@ -22,9 +22,6 @@ const Booking = require('../models/Booking');
 router.post('/request', async (req, res) => {
   try {
     const availableDrivers = req.availableDrivers;
-    if (availableDrivers.length === 0) {
-      return res.status(400).json({ message: "No drivers are currently available." });
-    }
 
     // 1. Create the new booking WITHOUT an initially assigned driver
     const newBooking = new Booking({
@@ -33,6 +30,9 @@ router.post('/request', async (req, res) => {
       destinationLocation: req.body.dropoffLocation,
       distance: req.body.distance,
       estimatedFare: req.body.estimatedFare,
+      rideType: req.body.rideType || 'bike',
+      paymentMethod: req.body.paymentMethod || 'UPI',
+      paymentStatus: 'held',
     });
 
     const savedBooking = await newBooking.save();
@@ -41,7 +41,7 @@ router.post('/request', async (req, res) => {
     req.startDispatchWaterfall(savedBooking);
     
     // 3. Send success back to the student
-    res.status(201).json(savedBooking);
+    res.status(201).json({ ...savedBooking.toObject(), matching: availableDrivers.length > 0 });
 
   } catch (err) {
     console.error("Booking creation failed:", err);

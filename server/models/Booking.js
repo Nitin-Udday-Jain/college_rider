@@ -27,6 +27,20 @@ const BookingSchema = new mongoose.Schema({
   estimatedFare: {
     type: Number, // Estimated fare in INR
   },
+  rideType: {
+    type: String,
+    enum: ['bike', 'auto', 'car'],
+    default: 'bike',
+  },
+  paymentMethod: {
+    type: String,
+    default: 'UPI',
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'held', 'refunded', 'paid'],
+    default: 'pending',
+  },
   status: {
         type: String,
         enum: ['requested', 'accepted', 'ongoing', 'completed', 'cancelled'], // <-- Make sure all 5 are here
